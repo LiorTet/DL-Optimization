@@ -1,48 +1,66 @@
 # Minimal Transformer LLM: From Scratch to Optimization
 
-This project implements a minimal decoder-only transformer model from scratch in PyTorch and progressively applies performance optimizations across training and compilation stages.
+This project implements a minimal decoder-only transformer model from scratch in PyTorch and progressively applies performance optimizations across training and compilation stages, e.g. compilation, AMP...
 
-The goal is to deeply understand how LLMs work internally and how to optimize them at different levels of the PyTorch stack.
+The goal is to deeply understand how LLMs function internally and how to optimize them at different levels of the PyTorch stack.
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ### Step 1: Baseline LLM (`LLM_1`)
-
 - Implemented a transformer-based decoder-only model from first principles.
-- Custom components:
+- **Custom components**:
   - Tokenization using Byte Pair Encoding (BPE)
   - Positional encoding
   - Causal multi-head self-attention
-  - Decoder block with layer normalization and feedforward layers
-- Model: GPT-style architecture, small scale
-- Dataset: [Tiny Shakespeare](https://github.com/karpathy/char-rnn)
-- Training:
-  - Manual training and validation loops
+  - Decoder block with LayerNorm and feedforward layers
+- **Model**: Small GPT-style decoder-only transformer
+- **Dataset**: Tiny Shakespeare
+- **Training**:
+  - Manual training & validation loops
   - Cosine LR scheduler with warm-up
-  - Loss function: CrossEntropyLoss
-  - Optimizer: AdamW
-- Result:
-  - Validation loss convergence to ~1.95 on character-level BPE tokens
+  - Loss: `CrossEntropyLoss`
+  - Optimizer: `AdamW`
+- **Results**:
+  - Validation loss convergence to ~1.95 (character-level BPE tokens)
 
 ---
 
 ### Step 2: Torch Compile & Optimization (`LLM_opt_1`)
+- Refactored code for clarity and modularity
+- Integrated `torch.compile()` with multiple backends:
+  - `default`, `reduce-overhead`, `max-autotune`
+- Explored backend execution:
+  - Interpreted autotuner output
+  - Observed GEMM kernel strategies (e.g., `addmm`, `bias_addmm`)
+- **Training improvements**:
+  - Slight speedups (~5%)
+  - Maintained validation loss (~1.85)
+- **Tools**:
+  - TensorBoard for logging
+  - TorchDynamo, TorchInductor, NVFuser
 
-- Refactored code for modularity and clarity
-- Integrated PyTorch 2.0 `torch.compile()` to accelerate training
-- Tested multiple compilation modes:
-  - `default`
-  - `reduce-overhead`
-  - `max-autotune`
-- Investigated kernel-level decisions using Inductor and NVFuser:
-  - Interpreted autotuner logs
-  - Observed `addmm` vs `bias_addmm` choices across shapes
-- Training improvements:
-  - Slight reduction in runtime
-  - Comparable validation loss to non-compiled version (~1.85)
-- Logged training metrics and hyperparameters using TensorBoard
+---
+
+### Step 3: Mixed Precision + Granular Compilation (`LLM_opt_2`)
+- Compiled selected submodules (e.g., attention, decoder layers)
+- Compared performance of:
+  - Full model compilation
+  - Layer-level compilation
+- **Profiling**:
+  - Used `torch.profiler` (inference)
+  - Analyzed `aten::addmm`, `volta_sgemm_*` kernels
+  - Understood `Self` vs `Total` time across CPU and CUDA
+- **Manual Timing**:
+  - Created `Timer` class with `cuda.synchronize()` for accurate CUDA timings
+- **Mixed Precision (AMP)**:
+  - Integrated `torch.cuda.amp.autocast` + `GradScaler`
+  - Achieved **2–3× speedup per epoch**
+  - Verified stability and lower memory usage
+- **Data I/O Benchmarking**:
+  - Measured train loader raw time (~7s out of ~160s per epoch)
+  - I/O not a bottleneck (~4%)
 
 ---
 
@@ -51,29 +69,31 @@ The goal is to deeply understand how LLMs work internally and how to optimize th
 - Python 3.10+
 - PyTorch 2.1+
 - CUDA-enabled GPU (tested with limited SMs)
-- TensorBoard for monitoring
-- TorchInductor / TorchDynamo backend via `torch.compile`
+- TorchInductor / TorchDynamo (`torch.compile`)
+- TensorBoard for metric visualization
 
 ---
 
 ## Roadmap
 
-This is part of a broader multi-month exploration of LLM training optimization:
+This is part of a broader, structured exploration of LLM optimization:
 
-- MES 1: Core architecture & training ✅  
-- MES 2: PyTorch-level optimization (AMP, checkpointing, profiling) 🔜  
-- MES 3: Custom kernel development with Triton / NVFuser  
-- MES 4: Distributed training (DDP, model parallelism)  
-- MES 5: Inference optimization (quantization, TensorRT, ONNX export)
+| STEP | Focus Area                                     | Status  |
+|-----|------------------------------------------------|---------|
+| 1   | Core architecture & training                   |  Done |
+| 2   | PyTorch-level optimization (AMP, checkpointing, profiling) | In Progress |
+| 3   | Custom kernel development (Triton, NVFuser)    | Planned |
+| 4   | Distributed training (DDP, model/pipeline parallelism) | Planned |
+| 5   | Inference optimization (quantization, ONNX, TensorRT) | Planned |
 
 ---
 
-## Next Steps
+##  Next Steps
 
-- Integrate Automatic Mixed Precision (`torch.cuda.amp`)
-- Apply gradient checkpointing for memory savings
-- Benchmark training time and memory across all modes
+- Implement gradient checkpointing for memory savings
+- Profile memory usage and runtime across model variants
 - Begin custom kernel prototyping with Triton
+- Extend performance metrics (FLOPs, energy usage, SM utilization)
 
 ---
 
